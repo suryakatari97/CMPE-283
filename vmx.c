@@ -5890,17 +5890,19 @@ static int vmx_handle_exit(struct kvm_vcpu *vcpu)
 
 	/* If guest state is invalid, start emulating */
 	if (vmx->emulation_required){
+		int temp = handle_invalid_guest_state(vcpu);
 		u64 end = rdtsc();
 	u64 diff = end-start;
 	atomic64_add(diff,&vm_exit_time);
-		return handle_invalid_guest_state(vcpu);
+		return temp;
 	}
 
 	if (is_guest_mode(vcpu) && nested_vmx_exit_reflected(vcpu, exit_reason)){
+		int temp =nested_vmx_reflect_vmexit(vcpu, exit_reason);
 		u64 end = rdtsc();
 	u64 diff = end-start;
 	atomic64_add(diff,&vm_exit_time);
-		return nested_vmx_reflect_vmexit(vcpu, exit_reason);
+		return temp;
 	}
 
 	if (exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY) {
@@ -5973,13 +5975,16 @@ static int vmx_handle_exit(struct kvm_vcpu *vcpu)
 			vmx->loaded_vmcs->soft_vnmi_blocked = 0;
 		}
 	}
-	u64 end = rdtsc();
-	u64 diff = end-start;
-	atomic64_add(diff,&vm_exit_time);
+	
 
 	if (exit_reason < kvm_vmx_max_exit_handlers
-	    && kvm_vmx_exit_handlers[exit_reason])
-		return kvm_vmx_exit_handlers[exit_reason](vcpu);
+	    && kvm_vmx_exit_handlers[exit_reason]){
+		int temp = kvm_vmx_exit_handlers[exit_reason](vcpu);
+		u64 end = rdtsc();
+		u64 diff = end-start;
+		atomic64_add(diff,&vm_exit_time);
+		return temp;
+	}
 	else {
 		vcpu_unimpl(vcpu, "vmx: unexpected exit reason 0x%x\n",
 				exit_reason);
@@ -5989,6 +5994,9 @@ static int vmx_handle_exit(struct kvm_vcpu *vcpu)
 			KVM_INTERNAL_ERROR_UNEXPECTED_EXIT_REASON;
 		vcpu->run->internal.ndata = 1;
 		vcpu->run->internal.data[0] = exit_reason;
+		u64 end = rdtsc();
+		u64 diff = end-start;
+		atomic64_add(diff,&vm_exit_time);
 		return 0;
 	}
 	
